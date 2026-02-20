@@ -734,7 +734,7 @@ var _Sources = (() => {
     description: "BuonDua manga source extension for Paperback",
     icon: "icon.png",
     name: "BuonDua",
-    version: "1.0.2",
+    version: "1.0.4",
     authorWebsite: "https://github.com/fantomthesloth",
     websiteBaseURL: BASE_URL,
     contentRating: import_types.ContentRating.ADULT,
@@ -788,7 +788,19 @@ var _Sources = (() => {
       return `${this.BASE_URL}${mangaId}`;
     }
     async getSearchTags() {
-      return [];
+      const popularTags = [
+        App.createTag({ id: "pure-media", label: "Pure Media" }),
+        App.createTag({ id: "yeha", label: "Yeha" }),
+        App.createTag({ id: "yeon-woo", label: "Yeon Woo" }),
+        App.createTag({ id: "jvid", label: "JVID" }),
+        App.createTag({ id: "xiuren", label: "Xiuren" }),
+        App.createTag({ id: "otherxxx", label: "OtherXXX" }),
+        App.createTag({ id: "misskang", label: "MissKang" }),
+        App.createTag({ id: "nude-fish", label: "Nude Fish" }),
+        App.createTag({ id: "imn", label: "IMN" }),
+        App.createTag({ id: "eternal-summer", label: "Eternal Summer" })
+      ];
+      return [App.createTagSection({ id: "popular", label: "Popular Tags", tags: popularTags })];
     }
     async supportsSearchOperators() {
       return false;
@@ -901,7 +913,12 @@ Please go to the homepage of BuonDua and press the cloud icon.`);
     }
     async getSearchResults(query, metadata) {
       const page = metadata?.page ?? 1;
-      const searchUrl = `/?search=${encodeURIComponent(query.title || "")}&start=${(page - 1) * 20}`;
+      let searchQuery = query.title || "";
+      if (query.includedTags && query.includedTags.length > 0) {
+        const tagQueries = query.includedTags.map((tag) => `+${tag.label}`).join(" ");
+        searchQuery = searchQuery ? `${searchQuery} ${tagQueries}` : tagQueries;
+      }
+      const searchUrl = `/?search=${encodeURIComponent(searchQuery)}&start=${(page - 1) * 20}`;
       const request = App.createRequest({
         url: this.BASE_URL + searchUrl,
         method: "GET"
@@ -931,43 +948,76 @@ Please go to the homepage of BuonDua and press the cloud icon.`);
       });
     }
     async getHomePageSections(sectionCallback) {
-      const section = App.createHomeSection({
-        id: "latest",
-        title: "Latest Galleries",
-        containsMoreItems: true,
-        type: import_types.HomeSectionType.singleRowNormal
-      });
-      const request = App.createRequest({
-        url: this.BASE_URL + "/",
-        method: "GET"
-      });
-      const response = await this.requestManager.schedule(request, 1);
-      this.CloudFlareError(response.status);
-      const html = response.data;
-      const $ = this.cheerio.load(html);
-      const items = [];
-      $(".items-row").each((i, element) => {
-        const href = $(element).find(".item-link").attr("href");
-        const title = $(element).find(".page-header h2 a").text().trim();
-        const thumbnail = $(element).find(".item-thumb img").attr("src");
-        if (href && title) {
-          items.push(
-            App.createPartialSourceManga({
-              mangaId: href,
-              title,
-              image: thumbnail || ""
-            })
-          );
+      const sections = [
+        {
+          id: "hot",
+          title: "Hot Albums \u{1F525}",
+          url: this.BASE_URL + "/hot/",
+          type: import_types.HomeSectionType.singleRowNormal
+        },
+        {
+          id: "latest",
+          title: "Latest Galleries",
+          url: this.BASE_URL + "/",
+          type: import_types.HomeSectionType.singleRowNormal
         }
-      });
-      section.items = items;
-      sectionCallback(section);
+      ];
+      const promises = [];
+      for (const sectionConfig of sections) {
+        const section = App.createHomeSection({
+          id: sectionConfig.id,
+          title: sectionConfig.title,
+          containsMoreItems: true,
+          type: sectionConfig.type
+        });
+        sectionCallback(section);
+        const request = App.createRequest({
+          url: sectionConfig.url,
+          method: "GET"
+        });
+        promises.push(
+          this.requestManager.schedule(request, 1).then((response) => {
+            this.CloudFlareError(response.status);
+            const html = response.data;
+            const $ = this.cheerio.load(html);
+            const items = [];
+            $(".items-row").each((i, element) => {
+              const href = $(element).find(".item-link").attr("href");
+              const title = $(element).find(".page-header h2 a").text().trim();
+              const thumbnail = $(element).find(".item-thumb img").attr("src");
+              if (href && title) {
+                items.push(
+                  App.createPartialSourceManga({
+                    mangaId: href,
+                    title,
+                    image: thumbnail || ""
+                  })
+                );
+              }
+            });
+            section.items = items;
+            sectionCallback(section);
+          }).catch((error) => {
+            console.error(`Failed to load section ${sectionConfig.id}:`, error);
+          })
+        );
+      }
+      await Promise.all(promises);
     }
     async getViewMoreItems(homepageSectionId, metadata) {
       const page = metadata?.page ?? 1;
-      const start = (page - 1) * 20;
+      let url = "";
+      switch (homepageSectionId) {
+        case "hot":
+          url = `${this.BASE_URL}/hot/?start=${(page - 1) * 20}`;
+          break;
+        case "latest":
+        default:
+          url = `${this.BASE_URL}/?start=${(page - 1) * 20}`;
+          break;
+      }
       const request = App.createRequest({
-        url: `${this.BASE_URL}/?start=${start}`,
+        url,
         method: "GET"
       });
       const response = await this.requestManager.schedule(request, 1);
@@ -994,7 +1044,6 @@ Please go to the homepage of BuonDua and press the cloud icon.`);
         metadata: results.length > 0 ? { page: page + 1 } : void 0
       });
     }
-    // Utility
     isValidImageUrl(url) {
       const urlWithoutQuery = url.split("?")[0];
       return /\.(jpe?g|png|webp|gif)$/i.test(urlWithoutQuery) && !url.includes("thumbnail") && !url.includes("small") && !url.includes("icon") && !url.includes("logo");
