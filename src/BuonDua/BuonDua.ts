@@ -28,17 +28,17 @@ export const BuonDuaInfo: SourceInfo = {
     description: 'BuonDua manga source extension for Paperback',
     icon: 'icon.png',
     name: 'BuonDua',
-    version: '1.0.1',
+    version: '1.0.2',
     authorWebsite: 'https://github.com/fantomthesloth',
     websiteBaseURL: BASE_URL,
     contentRating: ContentRating.ADULT,
-    intents: SourceIntents.MANGA_CHAPTERS | SourceIntents.HOMEPAGE_SECTIONS | SourceIntents.CLOUDFLARE_BYPASS_REQUIRED | SourceIntents.SETTINGS_UI,
     sourceTags: [
         {
             text: '18+',
             type: BadgeColor.YELLOW
         }
-    ]
+    ],
+    intents: SourceIntents.MANGA_CHAPTERS | SourceIntents.HOMEPAGE_SECTIONS | SourceIntents.SETTINGS_UI | SourceIntents.CLOUDFLARE_BYPASS_REQUIRED
 }
 
 export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePageSectionsProviding {
@@ -58,7 +58,7 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
                     'Accept-Language': 'en-US,en;q=0.9',
-                    'Referer': 'https://www.google.com/',
+                    'Referer': 'https://buondua.com/',
                     'Sec-Fetch-Dest': 'document',
                     'Sec-Fetch-Mode': 'navigate',
                     'Sec-Fetch-Site': 'none',
@@ -96,6 +96,23 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
         return false
     }
 
+    CloudFlareError(status: number): void {
+        if (status === 503 || status === 403) {
+            throw new Error(`CLOUDFLARE BYPASS ERROR:\nPlease go to the homepage of BuonDua and press the cloud icon.`)
+        }
+    }
+
+    async getCloudflareBypassRequest(): Promise<Request> {
+        return App.createRequest({
+            url: this.BASE_URL,
+            method: 'GET',
+            headers: {
+                'referer': `${this.BASE_URL}/`,
+                'user-agent': await this.requestManager.getDefaultUserAgent()
+            }
+        })
+    }
+
     async getMangaDetails(mangaId: string): Promise<SourceManga> {
         const request = App.createRequest({
             url: mangaId.startsWith('http') ? mangaId : this.BASE_URL + mangaId,
@@ -103,6 +120,8 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
         })
 
         const response = await this.requestManager.schedule(request, 1)
+        this.CloudFlareError(response.status)
+        
         const html = response.data as string
         const $ = this.cheerio.load(html)
 
@@ -145,7 +164,7 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
         return [
             App.createChapter({
                 id: '1',
-                name: mangaId,
+                name: 'Gallery',
                 chapNum: 1,
                 volume: 1,
                 langCode: 'EN'
@@ -170,6 +189,8 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
             })
 
             const response = await this.requestManager.schedule(request, 1)
+            this.CloudFlareError(response.status)
+            
             const html = response.data as string
             const $ = this.cheerio.load(html)
 
@@ -191,12 +212,12 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
 
                 // Alternative: check pagination links
                 if (!totalPages) {
-                    const pages = $('.pagination-list .pagination-link')
+                    const pageLinks = $('.pagination-list .pagination-link')
                         .toArray()
                         .map(el => parseInt($(el).text()))
                         .filter(n => !isNaN(n))
-                    if (pages.length > 0) {
-                        totalPages = Math.max(...pages)
+                    if (pageLinks.length > 0) {
+                        totalPages = Math.max(...pageLinks)
                     }
                 }
             }
@@ -223,6 +244,8 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
         })
 
         const response = await this.requestManager.schedule(request, 1)
+        this.CloudFlareError(response.status)
+        
         const html = response.data as string
         const $ = this.cheerio.load(html)
         const results: PartialSourceManga[] = []
@@ -252,21 +275,21 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
 
     async getHomePageSections(sectionCallback: (section: HomeSection) => void): Promise<void> {
         // BuonDua has a single gallery feed, not separate "Latest" and "Popular" sections
+        const section = App.createHomeSection({
+            id: 'latest',
+            title: 'Latest Galleries',
+            containsMoreItems: true,
+            type: HomeSectionType.singleRowNormal
+        })
+
         const request = App.createRequest({
             url: this.BASE_URL + '/',
             method: 'GET'
         })
 
-        const section = App.createHomeSection({
-            id: 'latest',
-            title: 'Latest Galleries',
-            containsMoreItems: false,
-            type: HomeSectionType.featured
-        })
-
-        sectionCallback(section)
-
         const response = await this.requestManager.schedule(request, 1)
+        this.CloudFlareError(response.status)
+        
         const html = response.data as string
         const $ = this.cheerio.load(html)
         const items: PartialSourceManga[] = []
@@ -293,7 +316,41 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
     }
 
     async getViewMoreItems(homepageSectionId: string, metadata: any): Promise<PagedResults> {
-        return App.createPagedResults({ results: [] })
+        const page = metadata?.page ?? 1
+        const start = (page - 1) * 20
+        
+        const request = App.createRequest({
+            url: `${this.BASE_URL}/?start=${start}`,
+            method: 'GET'
+        })
+
+        const response = await this.requestManager.schedule(request, 1)
+        this.CloudFlareError(response.status)
+        
+        const html = response.data as string
+        const $ = this.cheerio.load(html)
+        const results: PartialSourceManga[] = []
+
+        $('.items-row').each((i, element) => {
+            const href = $(element).find('.item-link').attr('href')
+            const title = $(element).find('.page-header h2 a').text().trim()
+            const thumbnail = $(element).find('.item-thumb img').attr('src')
+
+            if (href && title) {
+                results.push(
+                    App.createPartialSourceManga({
+                        mangaId: href,
+                        title: title,
+                        image: thumbnail || ''
+                    })
+                )
+            }
+        })
+
+        return App.createPagedResults({
+            results: results,
+            metadata: results.length > 0 ? { page: page + 1 } : undefined
+        })
     }
 
     // Utility
