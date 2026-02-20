@@ -28,7 +28,7 @@ export const BuonDuaInfo: SourceInfo = {
     description: 'BuonDua manga source extension for Paperback',
     icon: 'icon.png',
     name: 'BuonDua',
-    version: '1.0.2',
+    version: '1.0.4',
     authorWebsite: 'https://github.com/fantomthesloth',
     websiteBaseURL: BASE_URL,
     contentRating: ContentRating.ADULT,
@@ -85,7 +85,21 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
     getMangaShareUrl(mangaId: string): string { return `${this.BASE_URL}${mangaId}` }
 
     async getSearchTags(): Promise<TagSection[]> {
-        return []
+        // Popular tags for quick search
+        const popularTags: Tag[] = [
+            App.createTag({ id: 'pure-media', label: 'Pure Media' }),
+            App.createTag({ id: 'yeha', label: 'Yeha' }),
+            App.createTag({ id: 'yeon-woo', label: 'Yeon Woo' }),
+            App.createTag({ id: 'jvid', label: 'JVID' }),
+            App.createTag({ id: 'xiuren', label: 'Xiuren' }),
+            App.createTag({ id: 'otherxxx', label: 'OtherXXX' }),
+            App.createTag({ id: 'misskang', label: 'MissKang' }),
+            App.createTag({ id: 'nude-fish', label: 'Nude Fish' }),
+            App.createTag({ id: 'imn', label: 'IMN' }),
+            App.createTag({ id: 'eternal-summer', label: 'Eternal Summer' })
+        ]
+        
+        return [App.createTagSection({ id: 'popular', label: 'Popular Tags', tags: popularTags })]
     }
 
     async supportsSearchOperators(): Promise<boolean> {
@@ -125,16 +139,10 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
         const html = response.data as string
         const $ = this.cheerio.load(html)
 
-        // Extract title from h1 in article header
         const title = $('.article-header h1').first().text().trim() || $('h1').first().text().trim()
-
-        // Extract thumbnail from og:image
         const thumbnail = $('meta[property="og:image"]').attr('content') || ''
-
-        // Extract description
         const description = $('meta[property="og:description"]').attr('content') || 'No description available'
 
-        // Extract tags from .article-tags .tag
         const tags: Tag[] = []
         $('.article-tags .tag').each((i, element) => {
             const tagName = $(element).text().trim()
@@ -160,7 +168,6 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
     }
 
     async getChapters(mangaId: string): Promise<Chapter[]> {
-        // BuonDua galleries typically have one "chapter" with all images
         return [
             App.createChapter({
                 id: '1',
@@ -177,7 +184,6 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
         let currentPage = 1
         let totalPages = 1
 
-        // Fetch all pages of the gallery
         while (currentPage <= totalPages) {
             const url = currentPage === 1
                 ? (mangaId.startsWith('http') ? mangaId : this.BASE_URL + mangaId)
@@ -194,7 +200,6 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
             const html = response.data as string
             const $ = this.cheerio.load(html)
 
-            // Extract images from .article-fulltext p img
             $('.article-fulltext p img').each((i, element) => {
                 const src = $(element).attr('src')
                 if (src && this.isValidImageUrl(src)) {
@@ -202,7 +207,6 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
                 }
             })
 
-            // Get total pages from pagination or title
             if (currentPage === 1) {
                 const titleText = $('.article-header h1').text()
                 const pageMatch = titleText.match(/Page\s+(\d+)\s*\/\s*(\d+)/i)
@@ -210,7 +214,6 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
                     totalPages = parseInt(pageMatch[2])
                 }
 
-                // Alternative: check pagination links
                 if (!totalPages) {
                     const pageLinks = $('.pagination-list .pagination-link')
                         .toArray()
@@ -223,8 +226,6 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
             }
 
             currentPage++
-
-            // Safety limit to prevent infinite loops
             if (currentPage > 10) break
         }
 
@@ -237,7 +238,15 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
 
     async getSearchResults(query: SearchRequest, metadata: any): Promise<PagedResults> {
         const page = metadata?.page ?? 1
-        const searchUrl = `/?search=${encodeURIComponent(query.title || '')}&start=${(page - 1) * 20}`
+        let searchQuery = query.title || ''
+        
+        // Add tag search if tags are included
+        if (query.includedTags && query.includedTags.length > 0) {
+            const tagQueries = query.includedTags.map(tag => `+${tag.label}`).join(' ')
+            searchQuery = searchQuery ? `${searchQuery} ${tagQueries}` : tagQueries
+        }
+        
+        const searchUrl = `/?search=${encodeURIComponent(searchQuery)}&start=${(page - 1) * 20}`
         const request = App.createRequest({
             url: this.BASE_URL + searchUrl,
             method: 'GET'
@@ -250,7 +259,6 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
         const $ = this.cheerio.load(html)
         const results: PartialSourceManga[] = []
 
-        // Parse search results - same structure as homepage
         $('.items-row').each((i, element) => {
             const title = $(element).find('.page-header h2 a').text().trim()
             const href = $(element).find('.item-link').attr('href')
@@ -274,53 +282,91 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
     }
 
     async getHomePageSections(sectionCallback: (section: HomeSection) => void): Promise<void> {
-        // BuonDua has a single gallery feed, not separate "Latest" and "Popular" sections
-        const section = App.createHomeSection({
-            id: 'latest',
-            title: 'Latest Galleries',
-            containsMoreItems: true,
-            type: HomeSectionType.singleRowNormal
-        })
-
-        const request = App.createRequest({
-            url: this.BASE_URL + '/',
-            method: 'GET'
-        })
-
-        const response = await this.requestManager.schedule(request, 1)
-        this.CloudFlareError(response.status)
-        
-        const html = response.data as string
-        const $ = this.cheerio.load(html)
-        const items: PartialSourceManga[] = []
-
-        // Parse gallery items from homepage - .items-row with .item-link and .item-thumb img
-        $('.items-row').each((i, element) => {
-            const href = $(element).find('.item-link').attr('href')
-            const title = $(element).find('.page-header h2 a').text().trim()
-            const thumbnail = $(element).find('.item-thumb img').attr('src')
-
-            if (href && title) {
-                items.push(
-                    App.createPartialSourceManga({
-                        mangaId: href,
-                        title: title,
-                        image: thumbnail || ''
-                    })
-                )
+        const sections = [
+            {
+                id: 'hot',
+                title: 'Hot Albums 🔥',
+                url: this.BASE_URL + '/hot/',
+                type: HomeSectionType.singleRowNormal
+            },
+            {
+                id: 'latest',
+                title: 'Latest Galleries',
+                url: this.BASE_URL + '/',
+                type: HomeSectionType.singleRowNormal
             }
-        })
+        ]
 
-        section.items = items
-        sectionCallback(section)
+        const promises: Promise<void>[] = []
+
+        for (const sectionConfig of sections) {
+            const section = App.createHomeSection({
+                id: sectionConfig.id,
+                title: sectionConfig.title,
+                containsMoreItems: true,
+                type: sectionConfig.type
+            })
+
+            sectionCallback(section)
+
+            const request = App.createRequest({
+                url: sectionConfig.url,
+                method: 'GET'
+            })
+
+            promises.push(
+                this.requestManager.schedule(request, 1)
+                    .then((response) => {
+                        this.CloudFlareError(response.status)
+                        
+                        const html = response.data as string
+                        const $ = this.cheerio.load(html)
+                        const items: PartialSourceManga[] = []
+
+                        $('.items-row').each((i, element) => {
+                            const href = $(element).find('.item-link').attr('href')
+                            const title = $(element).find('.page-header h2 a').text().trim()
+                            const thumbnail = $(element).find('.item-thumb img').attr('src')
+
+                            if (href && title) {
+                                items.push(
+                                    App.createPartialSourceManga({
+                                        mangaId: href,
+                                        title: title,
+                                        image: thumbnail || ''
+                                    })
+                                )
+                            }
+                        })
+
+                        section.items = items
+                        sectionCallback(section)
+                    })
+                    .catch((error) => {
+                        console.error(`Failed to load section ${sectionConfig.id}:`, error)
+                    })
+            )
+        }
+
+        await Promise.all(promises)
     }
 
     async getViewMoreItems(homepageSectionId: string, metadata: any): Promise<PagedResults> {
         const page = metadata?.page ?? 1
-        const start = (page - 1) * 20
+        let url = ''
+        
+        switch (homepageSectionId) {
+            case 'hot':
+                url = `${this.BASE_URL}/hot/?start=${(page - 1) * 20}`
+                break
+            case 'latest':
+            default:
+                url = `${this.BASE_URL}/?start=${(page - 1) * 20}`
+                break
+        }
         
         const request = App.createRequest({
-            url: `${this.BASE_URL}/?start=${start}`,
+            url: url,
             method: 'GET'
         })
 
@@ -353,9 +399,7 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
         })
     }
 
-    // Utility
     private isValidImageUrl(url: string): boolean {
-        // Remove query parameters for extension check
         const urlWithoutQuery = url.split('?')[0]
         return /\.(jpe?g|png|webp|gif)$/i.test(urlWithoutQuery) &&
                !url.includes('thumbnail') &&
