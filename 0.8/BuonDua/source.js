@@ -15416,7 +15416,6 @@ var _Sources = (() => {
 
   // src/BuonDua/BuonDua.ts
   var BASE_URL = "https://buondua.com";
-  var USE_MOCK_DATA = process.env.BUONDUA_MOCK_DATA === "true";
   var BuonDuaInfo = {
     author: "FantomSloth",
     description: "BuonDua manga source extension for Paperback",
@@ -15479,9 +15478,6 @@ var _Sources = (() => {
       return false;
     }
     async getMangaDetails(mangaId) {
-      if (USE_MOCK_DATA) {
-        return this.getMockMangaDetails(mangaId);
-      }
       const request = App.createRequest({
         url: mangaId.startsWith("http") ? mangaId : this.BASE_URL + mangaId,
         method: "GET"
@@ -15526,9 +15522,6 @@ var _Sources = (() => {
       ];
     }
     async getChapterDetails(mangaId, chapterId) {
-      if (USE_MOCK_DATA) {
-        return this.getMockChapterDetails(mangaId, chapterId);
-      }
       const pages = [];
       let currentPage = 1;
       let totalPages = 1;
@@ -15570,9 +15563,6 @@ var _Sources = (() => {
       });
     }
     async getSearchResults(query, metadata) {
-      if (USE_MOCK_DATA) {
-        return this.getMockSearchResults(query.title || "");
-      }
       const page = metadata?.page ?? 1;
       const searchUrl = `/?search=${encodeURIComponent(query.title || "")}&start=${(page - 1) * 20}`;
       const request = App.createRequest({
@@ -15603,10 +15593,6 @@ var _Sources = (() => {
       });
     }
     async getHomePageSections(sectionCallback) {
-      if (USE_MOCK_DATA) {
-        this.getMockHomePageSections(sectionCallback);
-        return;
-      }
       const request = App.createRequest({
         url: this.BASE_URL + "/",
         method: "GET"
@@ -15642,74 +15628,10 @@ var _Sources = (() => {
     async getViewMoreItems(homepageSectionId, metadata) {
       return App.createPagedResults({ results: [] });
     }
-    // Mock data for testing (when network is unavailable)
-    getMockMangaDetails(mangaId) {
-      return App.createSourceManga({
-        id: mangaId,
-        mangaInfo: App.createMangaInfo({
-          titles: ["Pure Media Vol.315: Yeha (78 photos)"],
-          image: "https://i2.buondua.us/2025/52553/Pure-Media-Vol.315-Yeha-Your-Majesty-MissKON.com-064.jpeg",
-          desc: "Pure Media Vol.315: Yeha photo gallery",
-          status: "Finished",
-          author: "Pure Media",
-          tags: [App.createTagSection({ id: "tags", label: "Tags", tags: [
-            App.createTag({ id: "pure-media", label: "Pure Media" }),
-            App.createTag({ id: "yeha", label: "Yeha" })
-          ] })]
-        })
-      });
-    }
-    getMockChapterDetails(mangaId, chapterId) {
-      return App.createChapterDetails({
-        id: chapterId,
-        mangaId,
-        pages: [
-          "https://i2.buondua.us/2025/52553/Pure-Media-Vol.315-Yeha-Your-Majesty-MissKON.com-001.jpeg",
-          "https://i2.buondua.us/2025/52553/Pure-Media-Vol.315-Yeha-Your-Majesty-MissKON.com-002.jpeg",
-          "https://i2.buondua.us/2025/52553/Pure-Media-Vol.315-Yeha-Your-Majesty-MissKON.com-003.jpeg"
-        ]
-      });
-    }
-    getMockSearchResults(query) {
-      return App.createPagedResults({
-        results: [
-          App.createPartialSourceManga({
-            mangaId: "/pure-media-vol-315-yeha-yeha-78-photos-6551eee9b14143cac7eb1baf35ed4739-52553",
-            title: "Pure Media Vol.315: Yeha (78 photos)",
-            image: "https://i2.buondua.us/2025/52553/Pure-Media-Vol.315-Yeha-Your-Majesty-MissKON.com-064.jpeg"
-          }),
-          App.createPartialSourceManga({
-            mangaId: "/pure-media-vol-314-example-12345",
-            title: "Pure Media Vol.314: Example (50 photos)",
-            image: "https://i2.buondua.us/example.jpeg"
-          })
-        ]
-      });
-    }
-    getMockHomePageSections(sectionCallback) {
-      const section = App.createHomeSection({
-        id: "latest",
-        title: "Latest Galleries",
-        containsMoreItems: false,
-        type: import_types2.HomeSectionType.featured,
-        items: [
-          App.createPartialSourceManga({
-            mangaId: "/pure-media-vol-315-yeha-yeha-78-photos-6551eee9b14143cac7eb1baf35ed4739-52553",
-            title: "Pure Media Vol.315: Yeha (78 photos)",
-            image: "https://i2.buondua.us/2025/52553/Pure-Media-Vol.315-Yeha-Your-Majesty-MissKON.com-064.jpeg"
-          }),
-          App.createPartialSourceManga({
-            mangaId: "/yeon-woo-yeon-u-2025-10-onlyfans-he-ji-30-photos-3-videos-bd5bcf28c0cfbe46018375d5e04a0a3a-52552",
-            title: "Yeon Woo (\uC5F0\uC6B0): 2025.10 OnlyFans\u5408\u96C6 (30 photos + 3 videos)",
-            image: "https://cdn.buondua.us/pok.misskon.com/images/2026/02/14/Yeon-Woo-Yeonwoo-2025.10-OnlyFans-Collection-MissKON.com-01549d792236fa11ca1.webp"
-          })
-        ]
-      });
-      sectionCallback(section);
-    }
     // Utility
     isValidImageUrl(url) {
-      return /\.(jpe?g|png|webp|gif)$/i.test(url) && !url.includes("thumbnail") && !url.includes("small") && !url.includes("icon") && !url.includes("logo");
+      const urlWithoutQuery = url.split("?")[0];
+      return /\.(jpe?g|png|webp|gif)$/i.test(urlWithoutQuery) && !url.includes("thumbnail") && !url.includes("small") && !url.includes("icon") && !url.includes("logo");
     }
   };
   return __toCommonJS(BuonDua_exports);
