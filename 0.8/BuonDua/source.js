@@ -774,7 +774,7 @@ var _Sources = (() => {
     description: "BuonDua manga source extension for Paperback",
     icon: "icon.png",
     name: "BuonDua",
-    version: "1.0.8",
+    version: "1.0.9",
     authorWebsite: "https://github.com/fantomthesloth",
     websiteBaseURL: BASE_URL,
     contentRating: import_types.ContentRating.ADULT,
@@ -867,19 +867,23 @@ Please go to the homepage of BuonDua and press the cloud icon.`);
       const title = $(".article-header h1").first().text().trim() || $("h1").first().text().trim();
       const thumbnail = $('meta[property="og:image"]').attr("content") || "";
       const description = $('meta[property="og:description"]').attr("content") || "No description available";
-      const tags = [];
-      const seenTagIds = /* @__PURE__ */ new Set();
-      $(".article-tags").first().find(".tag").each((i, element) => {
+      const allTags = [];
+      $(".article-tags .tag").each((i, element) => {
         const tagName = $(element).text().trim();
         const tagHref = $(element).attr("href") || "";
         const tagId = tagHref.replace("/tag/", "").trim();
-        if (!tagId || seenTagIds.has(tagId)) return;
-        seenTagIds.add(tagId);
-        tags.push(App.createTag({
-          id: tagId,
-          label: tagName
-        }));
+        if (tagId && tagName) {
+          allTags.push({ id: tagId, label: tagName });
+        }
       });
+      const tags = [];
+      const seenIds = /* @__PURE__ */ new Set();
+      for (const tag of allTags) {
+        if (!seenIds.has(tag.id)) {
+          seenIds.add(tag.id);
+          tags.push(App.createTag({ id: tag.id, label: tag.label }));
+        }
+      }
       return App.createSourceManga({
         id: mangaId,
         mangaInfo: App.createMangaInfo({
