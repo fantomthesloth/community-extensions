@@ -774,7 +774,7 @@ var _Sources = (() => {
     description: "BuonDua manga source extension for Paperback",
     icon: "icon.png",
     name: "BuonDua",
-    version: "1.0.5",
+    version: "1.0.7",
     authorWebsite: "https://github.com/fantomthesloth",
     websiteBaseURL: BASE_URL,
     contentRating: import_types.ContentRating.ADULT,
@@ -868,16 +868,17 @@ Please go to the homepage of BuonDua and press the cloud icon.`);
       const thumbnail = $('meta[property="og:image"]').attr("content") || "";
       const description = $('meta[property="og:description"]').attr("content") || "No description available";
       const tags = [];
-      $(".article-tags .tag").each((i, element) => {
+      const seenTagIds = /* @__PURE__ */ new Set();
+      $(".article-tags").first().find(".tag").each((i, element) => {
         const tagName = $(element).text().trim();
         const tagHref = $(element).attr("href") || "";
         const tagId = tagHref.replace("/tag/", "").trim();
-        if (tagName && tagId) {
-          tags.push(App.createTag({
-            id: tagId,
-            label: tagName
-          }));
-        }
+        if (!tagId || seenTagIds.has(tagId)) return;
+        seenTagIds.add(tagId);
+        tags.push(App.createTag({
+          id: tagId,
+          label: tagName
+        }));
       });
       return App.createSourceManga({
         id: mangaId,
