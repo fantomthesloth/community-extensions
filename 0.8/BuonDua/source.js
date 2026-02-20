@@ -15416,13 +15416,14 @@ var _Sources = (() => {
 
   // src/BuonDua/BuonDua.ts
   var BASE_URL = "https://buondua.com";
+  var USE_MOCK_DATA = process.env.BUONDUA_MOCK_DATA === "true";
   var BuonDuaInfo = {
-    author: "Cline",
+    author: "FantomSloth",
     description: "BuonDua manga source extension for Paperback",
     icon: "icon.png",
     name: "BuonDua",
     version: "1.0.0",
-    authorWebsite: "https://github.com/cline",
+    authorWebsite: "https://github.com/fantomthesloth",
     websiteBaseURL: BASE_URL,
     contentRating: import_types2.ContentRating.ADULT,
     sourceTags: [],
@@ -15433,16 +15434,21 @@ var _Sources = (() => {
       this.BASE_URL = BASE_URL;
       this.stateManager = App.createSourceStateManager();
       this.requestManager = App.createRequestManager({
-        requestsPerSecond: 5,
-        requestTimeout: 2e4,
+        requestsPerSecond: 3,
+        requestTimeout: 3e4,
         interceptor: {
           interceptRequest: async (request) => {
             request.headers = {
               ...request.headers,
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-              "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-              "Accept-Language": "en-US,en;q=0.5",
-              "Referer": "https://www.google.com/"
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+              "Accept-Language": "en-US,en;q=0.9",
+              "Referer": "https://www.google.com/",
+              "Sec-Fetch-Dest": "document",
+              "Sec-Fetch-Mode": "navigate",
+              "Sec-Fetch-Site": "none",
+              "Connection": "keep-alive",
+              "Upgrade-Insecure-Requests": "1"
             };
             return request;
           },
@@ -15473,6 +15479,9 @@ var _Sources = (() => {
       return false;
     }
     async getMangaDetails(mangaId) {
+      if (USE_MOCK_DATA) {
+        return this.getMockMangaDetails(mangaId);
+      }
       const request = App.createRequest({
         url: mangaId.startsWith("http") ? mangaId : this.BASE_URL + mangaId,
         method: "GET"
@@ -15480,11 +15489,11 @@ var _Sources = (() => {
       const response = await this.requestManager.schedule(request, 1);
       const html3 = response.data;
       const $2 = load(html3);
-      const title = $2("h1").first().text().trim();
+      const title = $2(".article-header h1").first().text().trim() || $2("h1").first().text().trim();
       const thumbnail = $2('meta[property="og:image"]').attr("content") || "";
       const description = $2('meta[property="og:description"]').attr("content") || "No description available";
       const tags = [];
-      $2(".tag").each((i, element) => {
+      $2(".article-tags .tag").each((i, element) => {
         const tagName = $2(element).text().trim();
         if (tagName) {
           tags.push(App.createTag({
@@ -15500,7 +15509,6 @@ var _Sources = (() => {
           image: thumbnail,
           desc: description,
           status: "Finished",
-          // BuonDua galleries are typically complete
           author: "BuonDua",
           tags: [App.createTagSection({ id: "tags", label: "Tags", tags })]
         })
@@ -15518,27 +15526,42 @@ var _Sources = (() => {
       ];
     }
     async getChapterDetails(mangaId, chapterId) {
-      const request = App.createRequest({
-        url: mangaId.startsWith("http") ? mangaId : this.BASE_URL + mangaId,
-        method: "GET"
-      });
-      const response = await this.requestManager.schedule(request, 1);
-      const html3 = response.data;
-      const $2 = load(html3);
+      if (USE_MOCK_DATA) {
+        return this.getMockChapterDetails(mangaId, chapterId);
+      }
       const pages = [];
-      $2("img.gallery-image").each((i, element) => {
-        const src = $2(element).attr("src") || $2(element).attr("data-src");
-        if (src && this.isValidImageUrl(src)) {
-          pages.push(src);
-        }
-      });
-      if (pages.length === 0) {
-        $2(".article-content img").each((i, element) => {
-          const src = $2(element).attr("src") || $2(element).attr("data-src");
+      let currentPage = 1;
+      let totalPages = 1;
+      while (currentPage <= totalPages) {
+        const url = currentPage === 1 ? mangaId.startsWith("http") ? mangaId : this.BASE_URL + mangaId : (mangaId.startsWith("http") ? mangaId : this.BASE_URL + mangaId) + `?page=${currentPage}`;
+        const request = App.createRequest({
+          url,
+          method: "GET"
+        });
+        const response = await this.requestManager.schedule(request, 1);
+        const html3 = response.data;
+        const $2 = load(html3);
+        $2(".article-fulltext p img").each((i, element) => {
+          const src = $2(element).attr("src");
           if (src && this.isValidImageUrl(src)) {
             pages.push(src);
           }
         });
+        if (currentPage === 1) {
+          const titleText = $2(".article-header h1").text();
+          const pageMatch = titleText.match(/Page\s+(\d+)\s*\/\s*(\d+)/i);
+          if (pageMatch && pageMatch[2]) {
+            totalPages = parseInt(pageMatch[2]);
+          }
+          if (!totalPages) {
+            const pages2 = $2(".pagination-list .pagination-link").toArray().map((el) => parseInt($2(el).text())).filter((n) => !isNaN(n));
+            if (pages2.length > 0) {
+              totalPages = Math.max(...pages2);
+            }
+          }
+        }
+        currentPage++;
+        if (currentPage > 10) break;
       }
       return App.createChapterDetails({
         id: chapterId,
@@ -15547,8 +15570,11 @@ var _Sources = (() => {
       });
     }
     async getSearchResults(query, metadata) {
+      if (USE_MOCK_DATA) {
+        return this.getMockSearchResults(query.title || "");
+      }
       const page = metadata?.page ?? 1;
-      const searchUrl = `/search?q=${encodeURIComponent(query.title || "")}&page=${page}`;
+      const searchUrl = `/?search=${encodeURIComponent(query.title || "")}&start=${(page - 1) * 20}`;
       const request = App.createRequest({
         url: this.BASE_URL + searchUrl,
         method: "GET"
@@ -15557,10 +15583,10 @@ var _Sources = (() => {
       const html3 = response.data;
       const $2 = load(html3);
       const results = [];
-      $2(".gallery-item").each((i, element) => {
-        const title = $2(element).find(".title").text().trim();
-        const href = $2(element).find("a").attr("href");
-        const thumbnail = $2(element).find("img").attr("src");
+      $2(".items-row").each((i, element) => {
+        const title = $2(element).find(".page-header h2 a").text().trim();
+        const href = $2(element).find(".item-link").attr("href");
+        const thumbnail = $2(element).find(".item-thumb img").attr("src");
         if (title && href) {
           results.push(
             App.createPartialSourceManga({
@@ -15577,62 +15603,109 @@ var _Sources = (() => {
       });
     }
     async getHomePageSections(sectionCallback) {
-      const sections = [
-        {
-          request: App.createRequest({
-            url: this.BASE_URL + "/",
-            method: "GET"
-          }),
-          section: App.createHomeSection({
-            id: "latest",
-            title: "Latest Galleries",
-            containsMoreItems: false,
-            type: import_types2.HomeSectionType.featured
-          })
-        },
-        {
-          request: App.createRequest({
-            url: this.BASE_URL + "/",
-            method: "GET"
-          }),
-          section: App.createHomeSection({
-            id: "popular",
-            title: "Popular Galleries",
-            containsMoreItems: false,
-            type: import_types2.HomeSectionType.singleRowNormal
-          })
-        }
-      ];
-      const promises = [];
-      for (const section of sections) {
-        sectionCallback(section.section);
-        promises.push(
-          this.requestManager.schedule(section.request, 1).then(async (response) => {
-            const html3 = response.data;
-            const $2 = load(html3);
-            const items = [];
-            $2('a[href*="/gallery/"]').each((i, element) => {
-              const href = $2(element).attr("href");
-              const title = $2(element).text().trim();
-              if (href && title) {
-                items.push(
-                  App.createPartialSourceManga({
-                    mangaId: href,
-                    title,
-                    image: ""
-                  })
-                );
-              }
-            });
-            section.section.items = items;
-            sectionCallback(section.section);
-          })
-        );
+      if (USE_MOCK_DATA) {
+        this.getMockHomePageSections(sectionCallback);
+        return;
       }
-      await Promise.all(promises);
+      const request = App.createRequest({
+        url: this.BASE_URL + "/",
+        method: "GET"
+      });
+      const section = App.createHomeSection({
+        id: "latest",
+        title: "Latest Galleries",
+        containsMoreItems: false,
+        type: import_types2.HomeSectionType.featured
+      });
+      sectionCallback(section);
+      const response = await this.requestManager.schedule(request, 1);
+      const html3 = response.data;
+      const $2 = load(html3);
+      const items = [];
+      $2(".items-row").each((i, element) => {
+        const href = $2(element).find(".item-link").attr("href");
+        const title = $2(element).find(".page-header h2 a").text().trim();
+        const thumbnail = $2(element).find(".item-thumb img").attr("src");
+        if (href && title) {
+          items.push(
+            App.createPartialSourceManga({
+              mangaId: href,
+              title,
+              image: thumbnail || ""
+            })
+          );
+        }
+      });
+      section.items = items;
+      sectionCallback(section);
     }
     async getViewMoreItems(homepageSectionId, metadata) {
       return App.createPagedResults({ results: [] });
+    }
+    // Mock data for testing (when network is unavailable)
+    getMockMangaDetails(mangaId) {
+      return App.createSourceManga({
+        id: mangaId,
+        mangaInfo: App.createMangaInfo({
+          titles: ["Pure Media Vol.315: Yeha (78 photos)"],
+          image: "https://i2.buondua.us/2025/52553/Pure-Media-Vol.315-Yeha-Your-Majesty-MissKON.com-064.jpeg",
+          desc: "Pure Media Vol.315: Yeha photo gallery",
+          status: "Finished",
+          author: "Pure Media",
+          tags: [App.createTagSection({ id: "tags", label: "Tags", tags: [
+            App.createTag({ id: "pure-media", label: "Pure Media" }),
+            App.createTag({ id: "yeha", label: "Yeha" })
+          ] })]
+        })
+      });
+    }
+    getMockChapterDetails(mangaId, chapterId) {
+      return App.createChapterDetails({
+        id: chapterId,
+        mangaId,
+        pages: [
+          "https://i2.buondua.us/2025/52553/Pure-Media-Vol.315-Yeha-Your-Majesty-MissKON.com-001.jpeg",
+          "https://i2.buondua.us/2025/52553/Pure-Media-Vol.315-Yeha-Your-Majesty-MissKON.com-002.jpeg",
+          "https://i2.buondua.us/2025/52553/Pure-Media-Vol.315-Yeha-Your-Majesty-MissKON.com-003.jpeg"
+        ]
+      });
+    }
+    getMockSearchResults(query) {
+      return App.createPagedResults({
+        results: [
+          App.createPartialSourceManga({
+            mangaId: "/pure-media-vol-315-yeha-yeha-78-photos-6551eee9b14143cac7eb1baf35ed4739-52553",
+            title: "Pure Media Vol.315: Yeha (78 photos)",
+            image: "https://i2.buondua.us/2025/52553/Pure-Media-Vol.315-Yeha-Your-Majesty-MissKON.com-064.jpeg"
+          }),
+          App.createPartialSourceManga({
+            mangaId: "/pure-media-vol-314-example-12345",
+            title: "Pure Media Vol.314: Example (50 photos)",
+            image: "https://i2.buondua.us/example.jpeg"
+          })
+        ]
+      });
+    }
+    getMockHomePageSections(sectionCallback) {
+      const section = App.createHomeSection({
+        id: "latest",
+        title: "Latest Galleries",
+        containsMoreItems: false,
+        type: import_types2.HomeSectionType.featured,
+        items: [
+          App.createPartialSourceManga({
+            mangaId: "/pure-media-vol-315-yeha-yeha-78-photos-6551eee9b14143cac7eb1baf35ed4739-52553",
+            title: "Pure Media Vol.315: Yeha (78 photos)",
+            image: "https://i2.buondua.us/2025/52553/Pure-Media-Vol.315-Yeha-Your-Majesty-MissKON.com-064.jpeg"
+          }),
+          App.createPartialSourceManga({
+            mangaId: "/yeon-woo-yeon-u-2025-10-onlyfans-he-ji-30-photos-3-videos-bd5bcf28c0cfbe46018375d5e04a0a3a-52552",
+            title: "Yeon Woo (\uC5F0\uC6B0): 2025.10 OnlyFans\u5408\u96C6 (30 photos + 3 videos)",
+            image: "https://cdn.buondua.us/pok.misskon.com/images/2026/02/14/Yeon-Woo-Yeonwoo-2025.10-OnlyFans-Collection-MissKON.com-01549d792236fa11ca1.webp"
+          })
+        ]
+      });
+      sectionCallback(section);
     }
     // Utility
     isValidImageUrl(url) {
