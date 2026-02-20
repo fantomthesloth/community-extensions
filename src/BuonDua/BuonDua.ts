@@ -21,6 +21,8 @@ import {
     BadgeColor
 } from '@paperback/types'
 
+import popularTagsData from './tags.json'
+
 const BASE_URL = 'https://buondua.com'
 
 export const BuonDuaInfo: SourceInfo = {
@@ -28,7 +30,7 @@ export const BuonDuaInfo: SourceInfo = {
     description: 'BuonDua manga source extension for Paperback',
     icon: 'icon.png',
     name: 'BuonDua',
-    version: '1.0.4',
+    version: '1.0.5',
     authorWebsite: 'https://github.com/fantomthesloth',
     websiteBaseURL: BASE_URL,
     contentRating: ContentRating.ADULT,
@@ -85,19 +87,10 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
     getMangaShareUrl(mangaId: string): string { return `${this.BASE_URL}${mangaId}` }
 
     async getSearchTags(): Promise<TagSection[]> {
-        // Popular tags for quick search
-        const popularTags: Tag[] = [
-            App.createTag({ id: 'pure-media', label: 'Pure Media' }),
-            App.createTag({ id: 'yeha', label: 'Yeha' }),
-            App.createTag({ id: 'yeon-woo', label: 'Yeon Woo' }),
-            App.createTag({ id: 'jvid', label: 'JVID' }),
-            App.createTag({ id: 'xiuren', label: 'Xiuren' }),
-            App.createTag({ id: 'otherxxx', label: 'OtherXXX' }),
-            App.createTag({ id: 'misskang', label: 'MissKang' }),
-            App.createTag({ id: 'nude-fish', label: 'Nude Fish' }),
-            App.createTag({ id: 'imn', label: 'IMN' }),
-            App.createTag({ id: 'eternal-summer', label: 'Eternal Summer' })
-        ]
+        // Convert popular tags from JSON to Tag objects
+        const popularTags: Tag[] = popularTagsData.popularTags.map(tag => 
+            App.createTag({ id: tag.id, label: tag.label })
+        )
         
         return [App.createTagSection({ id: 'popular', label: 'Popular Tags', tags: popularTags })]
     }
@@ -135,7 +128,7 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
 
         const response = await this.requestManager.schedule(request, 1)
         this.CloudFlareError(response.status)
-        
+
         const html = response.data as string
         const $ = this.cheerio.load(html)
 
@@ -146,9 +139,13 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
         const tags: Tag[] = []
         $('.article-tags .tag').each((i, element) => {
             const tagName = $(element).text().trim()
-            if (tagName) {
+            // Extract tag ID from href: /tag/pure-media-10876 -> pure-media-10876
+            const tagHref = $(element).attr('href') || ''
+            const tagId = tagHref.replace('/tag/', '').trim()
+            
+            if (tagName && tagId) {
                 tags.push(App.createTag({
-                    id: tagName.toLowerCase().replace(/\s+/g, '-'),
+                    id: tagId,
                     label: tagName
                 }))
             }
@@ -240,13 +237,26 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
         const page = metadata?.page ?? 1
         let searchQuery = query.title || ''
         
-        // Add tag search if tags are included
-        if (query.includedTags && query.includedTags.length > 0) {
-            const tagQueries = query.includedTags.map(tag => `+${tag.label}`).join(' ')
-            searchQuery = searchQuery ? `${searchQuery} ${tagQueries}` : tagQueries
+        // Check if searching by tag
+        const hasTags = query.includedTags && query.includedTags.length > 0
+        
+        let searchUrl: string
+        
+        if (hasTags) {
+            // Use tag endpoint: /tag/tag-id
+            // For multiple tags, use the first one (BuonDua doesn't support multi-tag filtering)
+            const tagId = query.includedTags[0].id
+            searchUrl = `/tag/${tagId}?start=${(page - 1) * 20}`
+            
+            // Add text query if also provided
+            if (searchQuery) {
+                searchUrl = `/?search=${encodeURIComponent(searchQuery)}&start=${(page - 1) * 20}`
+            }
+        } else {
+            // Regular search
+            searchUrl = `/?search=${encodeURIComponent(searchQuery)}&start=${(page - 1) * 20}`
         }
         
-        const searchUrl = `/?search=${encodeURIComponent(searchQuery)}&start=${(page - 1) * 20}`
         const request = App.createRequest({
             url: this.BASE_URL + searchUrl,
             method: 'GET'
