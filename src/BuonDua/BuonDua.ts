@@ -17,7 +17,8 @@ import {
     SourceIntents,
     DUISection,
     SearchResultsProviding,
-    HomePageSectionsProviding
+    HomePageSectionsProviding,
+    BadgeColor
 } from '@paperback/types'
 
 const BASE_URL = 'https://buondua.com'
@@ -31,8 +32,13 @@ export const BuonDuaInfo: SourceInfo = {
     authorWebsite: 'https://github.com/fantomthesloth',
     websiteBaseURL: BASE_URL,
     contentRating: ContentRating.ADULT,
-    sourceTags: [],
-    intents: SourceIntents.MANGA_CHAPTERS | SourceIntents.HOMEPAGE_SECTIONS | SourceIntents.SETTINGS_UI
+    intents: SourceIntents.MANGA_CHAPTERS | SourceIntents.HOMEPAGE_SECTIONS | SourceIntents.CLOUDFLARE_BYPASS_REQUIRED | SourceIntents.SETTINGS_UI,
+    sourceTags: [
+        {
+            text: '18+',
+            type: BadgeColor.YELLOW
+        }
+    ]
 }
 
 export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePageSectionsProviding {
