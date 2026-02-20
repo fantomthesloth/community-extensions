@@ -728,13 +728,53 @@ var _Sources = (() => {
     BuonDuaInfo: () => BuonDuaInfo
   });
   var import_types = __toESM(require_lib());
+
+  // src/BuonDua/tags.json
+  var tags_default = {
+    popularTags: [
+      {
+        id: "cosplay-10688",
+        label: "Cosplay"
+      },
+      {
+        id: "xr-uncensored-11790",
+        label: "XR Uncensored"
+      },
+      {
+        id: "jvid-11832",
+        label: "JVID"
+      },
+      {
+        id: "jp-11853",
+        label: "JP"
+      },
+      {
+        id: "otherxxx-13913",
+        label: "OnlyFans"
+      },
+      {
+        id: "private-photoshoot-12486",
+        label: "Private Photoshoot"
+      },
+      {
+        id: "pure-media-10876",
+        label: "Pure Media"
+      },
+      {
+        id: "xiuren-7417",
+        label: "Xiuren"
+      }
+    ]
+  };
+
+  // src/BuonDua/BuonDua.ts
   var BASE_URL = "https://buondua.com";
   var BuonDuaInfo = {
     author: "FantomSloth",
     description: "BuonDua manga source extension for Paperback",
     icon: "icon.png",
     name: "BuonDua",
-    version: "1.0.4",
+    version: "1.0.5",
     authorWebsite: "https://github.com/fantomthesloth",
     websiteBaseURL: BASE_URL,
     contentRating: import_types.ContentRating.ADULT,
@@ -788,18 +828,9 @@ var _Sources = (() => {
       return `${this.BASE_URL}${mangaId}`;
     }
     async getSearchTags() {
-      const popularTags = [
-        App.createTag({ id: "pure-media", label: "Pure Media" }),
-        App.createTag({ id: "yeha", label: "Yeha" }),
-        App.createTag({ id: "yeon-woo", label: "Yeon Woo" }),
-        App.createTag({ id: "jvid", label: "JVID" }),
-        App.createTag({ id: "xiuren", label: "Xiuren" }),
-        App.createTag({ id: "otherxxx", label: "OtherXXX" }),
-        App.createTag({ id: "misskang", label: "MissKang" }),
-        App.createTag({ id: "nude-fish", label: "Nude Fish" }),
-        App.createTag({ id: "imn", label: "IMN" }),
-        App.createTag({ id: "eternal-summer", label: "Eternal Summer" })
-      ];
+      const popularTags = tags_default.popularTags.map(
+        (tag) => App.createTag({ id: tag.id, label: tag.label })
+      );
       return [App.createTagSection({ id: "popular", label: "Popular Tags", tags: popularTags })];
     }
     async supportsSearchOperators() {
@@ -839,9 +870,11 @@ Please go to the homepage of BuonDua and press the cloud icon.`);
       const tags = [];
       $(".article-tags .tag").each((i, element) => {
         const tagName = $(element).text().trim();
-        if (tagName) {
+        const tagHref = $(element).attr("href") || "";
+        const tagId = tagHref.replace("/tag/", "").trim();
+        if (tagName && tagId) {
           tags.push(App.createTag({
-            id: tagName.toLowerCase().replace(/\s+/g, "-"),
+            id: tagId,
             label: tagName
           }));
         }
@@ -914,11 +947,17 @@ Please go to the homepage of BuonDua and press the cloud icon.`);
     async getSearchResults(query, metadata) {
       const page = metadata?.page ?? 1;
       let searchQuery = query.title || "";
-      if (query.includedTags && query.includedTags.length > 0) {
-        const tagQueries = query.includedTags.map((tag) => `+${tag.label}`).join(" ");
-        searchQuery = searchQuery ? `${searchQuery} ${tagQueries}` : tagQueries;
+      const hasTags = query.includedTags && query.includedTags.length > 0;
+      let searchUrl;
+      if (hasTags) {
+        const tagId = query.includedTags[0].id;
+        searchUrl = `/tag/${tagId}?start=${(page - 1) * 20}`;
+        if (searchQuery) {
+          searchUrl = `/?search=${encodeURIComponent(searchQuery)}&start=${(page - 1) * 20}`;
+        }
+      } else {
+        searchUrl = `/?search=${encodeURIComponent(searchQuery)}&start=${(page - 1) * 20}`;
       }
-      const searchUrl = `/?search=${encodeURIComponent(searchQuery)}&start=${(page - 1) * 20}`;
       const request = App.createRequest({
         url: this.BASE_URL + searchUrl,
         method: "GET"
