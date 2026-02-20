@@ -30,7 +30,7 @@ export const BuonDuaInfo: SourceInfo = {
     description: 'BuonDua manga source extension for Paperback',
     icon: 'icon.png',
     name: 'BuonDua',
-    version: '1.0.7',
+    version: '1.0.8',
     authorWebsite: 'https://github.com/fantomthesloth',
     websiteBaseURL: BASE_URL,
     contentRating: ContentRating.ADULT,
