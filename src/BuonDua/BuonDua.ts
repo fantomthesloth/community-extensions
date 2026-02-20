@@ -20,8 +20,6 @@ import {
     HomePageSectionsProviding
 } from '@paperback/types'
 
-import { load } from 'cheerio'
-
 const BASE_URL = 'https://buondua.com'
 
 export const BuonDuaInfo: SourceInfo = {
@@ -29,7 +27,7 @@ export const BuonDuaInfo: SourceInfo = {
     description: 'BuonDua manga source extension for Paperback',
     icon: 'icon.png',
     name: 'BuonDua',
-    version: '1.0.0',
+    version: '1.0.1',
     authorWebsite: 'https://github.com/fantomthesloth',
     websiteBaseURL: BASE_URL,
     contentRating: ContentRating.ADULT,
@@ -39,6 +37,8 @@ export const BuonDuaInfo: SourceInfo = {
 
 export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePageSectionsProviding {
     BASE_URL = BASE_URL
+
+    constructor(private cheerio: CheerioAPI) { }
 
     stateManager = App.createSourceStateManager()
 
@@ -98,7 +98,7 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
 
         const response = await this.requestManager.schedule(request, 1)
         const html = response.data as string
-        const $ = load(html)
+        const $ = this.cheerio.load(html)
 
         // Extract title from h1 in article header
         const title = $('.article-header h1').first().text().trim() || $('h1').first().text().trim()
@@ -165,7 +165,7 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
 
             const response = await this.requestManager.schedule(request, 1)
             const html = response.data as string
-            const $ = load(html)
+            const $ = this.cheerio.load(html)
 
             // Extract images from .article-fulltext p img
             $('.article-fulltext p img').each((i, element) => {
@@ -218,7 +218,7 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
 
         const response = await this.requestManager.schedule(request, 1)
         const html = response.data as string
-        const $ = load(html)
+        const $ = this.cheerio.load(html)
         const results: PartialSourceManga[] = []
 
         // Parse search results - same structure as homepage
@@ -262,7 +262,7 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
 
         const response = await this.requestManager.schedule(request, 1)
         const html = response.data as string
-        const $ = load(html)
+        const $ = this.cheerio.load(html)
         const items: PartialSourceManga[] = []
 
         // Parse gallery items from homepage - .items-row with .item-link and .item-thumb img

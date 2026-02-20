@@ -1,7 +1,7 @@
 {
   "name": "buondua-extension",
   "version": "0.8.0",
-  "repositoryName": "Boundua Paperback extension (0.8)",
+  "repositoryName": "Boundua Paperback extension (0.8.1)",
   "description": "Community maintained Paperback extension repository",
   "main": "index.js",
   "scripts": {
