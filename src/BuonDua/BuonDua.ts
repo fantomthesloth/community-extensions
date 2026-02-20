@@ -30,7 +30,7 @@ export const BuonDuaInfo: SourceInfo = {
     description: 'BuonDua manga source extension for Paperback',
     icon: 'icon.png',
     name: 'BuonDua',
-    version: '1.0.5',
+    version: '1.0.7',
     authorWebsite: 'https://github.com/fantomthesloth',
     websiteBaseURL: BASE_URL,
     contentRating: ContentRating.ADULT,
@@ -137,18 +137,23 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
         const description = $('meta[property="og:description"]').attr('content') || 'No description available'
 
         const tags: Tag[] = []
-        $('.article-tags .tag').each((i, element) => {
+        const seenTagIds = new Set<string>()
+        
+        // Only get tags from the first .article-tags section (avoid duplicates from bottom of page)
+        $('.article-tags').first().find('.tag').each((i, element) => {
             const tagName = $(element).text().trim()
             // Extract tag ID from href: /tag/pure-media-10876 -> pure-media-10876
             const tagHref = $(element).attr('href') || ''
             const tagId = tagHref.replace('/tag/', '').trim()
             
-            if (tagName && tagId) {
-                tags.push(App.createTag({
-                    id: tagId,
-                    label: tagName
-                }))
-            }
+            // Skip if no tag ID or already seen (avoid duplicates)
+            if (!tagId || seenTagIds.has(tagId)) return
+            
+            seenTagIds.add(tagId)
+            tags.push(App.createTag({
+                id: tagId,
+                label: tagName
+            }))
         })
 
         return App.createSourceManga({
