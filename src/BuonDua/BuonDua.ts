@@ -24,9 +24,6 @@ import { load } from 'cheerio'
 
 const BASE_URL = 'https://buondua.com'
 
-// Environment variable to enable mock data mode (for testing)
-const USE_MOCK_DATA = process.env.BUONDUA_MOCK_DATA === 'true'
-
 export const BuonDuaInfo: SourceInfo = {
     author: 'FantomSloth',
     description: 'BuonDua manga source extension for Paperback',
@@ -94,11 +91,6 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
     }
 
     async getMangaDetails(mangaId: string): Promise<SourceManga> {
-        // Return mock data in test environment
-        if (USE_MOCK_DATA) {
-            return this.getMockMangaDetails(mangaId)
-        }
-
         const request = App.createRequest({
             url: mangaId.startsWith('http') ? mangaId : this.BASE_URL + mangaId,
             method: 'GET'
@@ -156,11 +148,6 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
     }
 
     async getChapterDetails(mangaId: string, chapterId: string): Promise<ChapterDetails> {
-        // Return mock data in test environment
-        if (USE_MOCK_DATA) {
-            return this.getMockChapterDetails(mangaId, chapterId)
-        }
-
         const pages: string[] = []
         let currentPage = 1
         let totalPages = 1
@@ -222,11 +209,6 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
     }
 
     async getSearchResults(query: SearchRequest, metadata: any): Promise<PagedResults> {
-        // Return mock data in test environment
-        if (USE_MOCK_DATA) {
-            return this.getMockSearchResults(query.title || '')
-        }
-
         const page = metadata?.page ?? 1
         const searchUrl = `/?search=${encodeURIComponent(query.title || '')}&start=${(page - 1) * 20}`
         const request = App.createRequest({
@@ -263,12 +245,6 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
     }
 
     async getHomePageSections(sectionCallback: (section: HomeSection) => void): Promise<void> {
-        // Return mock data in test environment
-        if (USE_MOCK_DATA) {
-            this.getMockHomePageSections(sectionCallback)
-            return
-        }
-
         // BuonDua has a single gallery feed, not separate "Latest" and "Popular" sections
         const request = App.createRequest({
             url: this.BASE_URL + '/',
@@ -314,78 +290,11 @@ export class BuonDua implements ChapterProviding, SearchResultsProviding, HomePa
         return App.createPagedResults({ results: [] })
     }
 
-    // Mock data for testing (when network is unavailable)
-    private getMockMangaDetails(mangaId: string): SourceManga {
-        return App.createSourceManga({
-            id: mangaId,
-            mangaInfo: App.createMangaInfo({
-                titles: ['Pure Media Vol.315: Yeha (78 photos)'],
-                image: 'https://i2.buondua.us/2025/52553/Pure-Media-Vol.315-Yeha-Your-Majesty-MissKON.com-064.jpeg',
-                desc: 'Pure Media Vol.315: Yeha photo gallery',
-                status: 'Finished',
-                author: 'Pure Media',
-                tags: [App.createTagSection({ id: 'tags', label: 'Tags', tags: [
-                    App.createTag({ id: 'pure-media', label: 'Pure Media' }),
-                    App.createTag({ id: 'yeha', label: 'Yeha' })
-                ]})]
-            })
-        })
-    }
-
-    private getMockChapterDetails(mangaId: string, chapterId: string): ChapterDetails {
-        return App.createChapterDetails({
-            id: chapterId,
-            mangaId: mangaId,
-            pages: [
-                'https://i2.buondua.us/2025/52553/Pure-Media-Vol.315-Yeha-Your-Majesty-MissKON.com-001.jpeg',
-                'https://i2.buondua.us/2025/52553/Pure-Media-Vol.315-Yeha-Your-Majesty-MissKON.com-002.jpeg',
-                'https://i2.buondua.us/2025/52553/Pure-Media-Vol.315-Yeha-Your-Majesty-MissKON.com-003.jpeg'
-            ]
-        })
-    }
-
-    private getMockSearchResults(query: string): PagedResults {
-        return App.createPagedResults({
-            results: [
-                App.createPartialSourceManga({
-                    mangaId: '/pure-media-vol-315-yeha-yeha-78-photos-6551eee9b14143cac7eb1baf35ed4739-52553',
-                    title: 'Pure Media Vol.315: Yeha (78 photos)',
-                    image: 'https://i2.buondua.us/2025/52553/Pure-Media-Vol.315-Yeha-Your-Majesty-MissKON.com-064.jpeg'
-                }),
-                App.createPartialSourceManga({
-                    mangaId: '/pure-media-vol-314-example-12345',
-                    title: 'Pure Media Vol.314: Example (50 photos)',
-                    image: 'https://i2.buondua.us/example.jpeg'
-                })
-            ]
-        })
-    }
-
-    private getMockHomePageSections(sectionCallback: (section: HomeSection) => void): void {
-        const section = App.createHomeSection({
-            id: 'latest',
-            title: 'Latest Galleries',
-            containsMoreItems: false,
-            type: HomeSectionType.featured,
-            items: [
-                App.createPartialSourceManga({
-                    mangaId: '/pure-media-vol-315-yeha-yeha-78-photos-6551eee9b14143cac7eb1baf35ed4739-52553',
-                    title: 'Pure Media Vol.315: Yeha (78 photos)',
-                    image: 'https://i2.buondua.us/2025/52553/Pure-Media-Vol.315-Yeha-Your-Majesty-MissKON.com-064.jpeg'
-                }),
-                App.createPartialSourceManga({
-                    mangaId: '/yeon-woo-yeon-u-2025-10-onlyfans-he-ji-30-photos-3-videos-bd5bcf28c0cfbe46018375d5e04a0a3a-52552',
-                    title: 'Yeon Woo (연우): 2025.10 OnlyFans合集 (30 photos + 3 videos)',
-                    image: 'https://cdn.buondua.us/pok.misskon.com/images/2026/02/14/Yeon-Woo-Yeonwoo-2025.10-OnlyFans-Collection-MissKON.com-01549d792236fa11ca1.webp'
-                })
-            ]
-        })
-        sectionCallback(section)
-    }
-
     // Utility
     private isValidImageUrl(url: string): boolean {
-        return /\.(jpe?g|png|webp|gif)$/i.test(url) &&
+        // Remove query parameters for extension check
+        const urlWithoutQuery = url.split('?')[0]
+        return /\.(jpe?g|png|webp|gif)$/i.test(urlWithoutQuery) &&
                !url.includes('thumbnail') &&
                !url.includes('small') &&
                !url.includes('icon') &&
