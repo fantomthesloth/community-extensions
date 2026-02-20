@@ -734,17 +734,17 @@ var _Sources = (() => {
     description: "BuonDua manga source extension for Paperback",
     icon: "icon.png",
     name: "BuonDua",
-    version: "1.0.1",
+    version: "1.0.2",
     authorWebsite: "https://github.com/fantomthesloth",
     websiteBaseURL: BASE_URL,
     contentRating: import_types.ContentRating.ADULT,
-    intents: import_types.SourceIntents.MANGA_CHAPTERS | import_types.SourceIntents.HOMEPAGE_SECTIONS | import_types.SourceIntents.CLOUDFLARE_BYPASS_REQUIRED | import_types.SourceIntents.SETTINGS_UI,
     sourceTags: [
       {
         text: "18+",
         type: import_types.BadgeColor.YELLOW
       }
-    ]
+    ],
+    intents: import_types.SourceIntents.MANGA_CHAPTERS | import_types.SourceIntents.HOMEPAGE_SECTIONS | import_types.SourceIntents.SETTINGS_UI | import_types.SourceIntents.CLOUDFLARE_BYPASS_REQUIRED
   };
   var BuonDua = class {
     constructor(cheerio) {
@@ -761,7 +761,7 @@ var _Sources = (() => {
               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
               "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
               "Accept-Language": "en-US,en;q=0.9",
-              "Referer": "https://www.google.com/",
+              "Referer": "https://buondua.com/",
               "Sec-Fetch-Dest": "document",
               "Sec-Fetch-Mode": "navigate",
               "Sec-Fetch-Site": "none",
@@ -796,12 +796,29 @@ var _Sources = (() => {
     async supportsTagExclusion() {
       return false;
     }
+    CloudFlareError(status) {
+      if (status === 503 || status === 403) {
+        throw new Error(`CLOUDFLARE BYPASS ERROR:
+Please go to the homepage of BuonDua and press the cloud icon.`);
+      }
+    }
+    async getCloudflareBypassRequest() {
+      return App.createRequest({
+        url: this.BASE_URL,
+        method: "GET",
+        headers: {
+          "referer": `${this.BASE_URL}/`,
+          "user-agent": await this.requestManager.getDefaultUserAgent()
+        }
+      });
+    }
     async getMangaDetails(mangaId) {
       const request = App.createRequest({
         url: mangaId.startsWith("http") ? mangaId : this.BASE_URL + mangaId,
         method: "GET"
       });
       const response = await this.requestManager.schedule(request, 1);
+      this.CloudFlareError(response.status);
       const html = response.data;
       const $ = this.cheerio.load(html);
       const title = $(".article-header h1").first().text().trim() || $("h1").first().text().trim();
@@ -833,7 +850,7 @@ var _Sources = (() => {
       return [
         App.createChapter({
           id: "1",
-          name: mangaId,
+          name: "Gallery",
           chapNum: 1,
           volume: 1,
           langCode: "EN"
@@ -851,6 +868,7 @@ var _Sources = (() => {
           method: "GET"
         });
         const response = await this.requestManager.schedule(request, 1);
+        this.CloudFlareError(response.status);
         const html = response.data;
         const $ = this.cheerio.load(html);
         $(".article-fulltext p img").each((i, element) => {
@@ -866,9 +884,9 @@ var _Sources = (() => {
             totalPages = parseInt(pageMatch[2]);
           }
           if (!totalPages) {
-            const pages2 = $(".pagination-list .pagination-link").toArray().map((el) => parseInt($(el).text())).filter((n) => !isNaN(n));
-            if (pages2.length > 0) {
-              totalPages = Math.max(...pages2);
+            const pageLinks = $(".pagination-list .pagination-link").toArray().map((el) => parseInt($(el).text())).filter((n) => !isNaN(n));
+            if (pageLinks.length > 0) {
+              totalPages = Math.max(...pageLinks);
             }
           }
         }
@@ -889,6 +907,7 @@ var _Sources = (() => {
         method: "GET"
       });
       const response = await this.requestManager.schedule(request, 1);
+      this.CloudFlareError(response.status);
       const html = response.data;
       const $ = this.cheerio.load(html);
       const results = [];
@@ -912,18 +931,18 @@ var _Sources = (() => {
       });
     }
     async getHomePageSections(sectionCallback) {
+      const section = App.createHomeSection({
+        id: "latest",
+        title: "Latest Galleries",
+        containsMoreItems: true,
+        type: import_types.HomeSectionType.singleRowNormal
+      });
       const request = App.createRequest({
         url: this.BASE_URL + "/",
         method: "GET"
       });
-      const section = App.createHomeSection({
-        id: "latest",
-        title: "Latest Galleries",
-        containsMoreItems: false,
-        type: import_types.HomeSectionType.featured
-      });
-      sectionCallback(section);
       const response = await this.requestManager.schedule(request, 1);
+      this.CloudFlareError(response.status);
       const html = response.data;
       const $ = this.cheerio.load(html);
       const items = [];
@@ -945,7 +964,35 @@ var _Sources = (() => {
       sectionCallback(section);
     }
     async getViewMoreItems(homepageSectionId, metadata) {
-      return App.createPagedResults({ results: [] });
+      const page = metadata?.page ?? 1;
+      const start = (page - 1) * 20;
+      const request = App.createRequest({
+        url: `${this.BASE_URL}/?start=${start}`,
+        method: "GET"
+      });
+      const response = await this.requestManager.schedule(request, 1);
+      this.CloudFlareError(response.status);
+      const html = response.data;
+      const $ = this.cheerio.load(html);
+      const results = [];
+      $(".items-row").each((i, element) => {
+        const href = $(element).find(".item-link").attr("href");
+        const title = $(element).find(".page-header h2 a").text().trim();
+        const thumbnail = $(element).find(".item-thumb img").attr("src");
+        if (href && title) {
+          results.push(
+            App.createPartialSourceManga({
+              mangaId: href,
+              title,
+              image: thumbnail || ""
+            })
+          );
+        }
+      });
+      return App.createPagedResults({
+        results,
+        metadata: results.length > 0 ? { page: page + 1 } : void 0
+      });
     }
     // Utility
     isValidImageUrl(url) {
